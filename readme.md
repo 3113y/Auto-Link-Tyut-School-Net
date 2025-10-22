@@ -1,56 +1,51 @@
-# 简介
+# 太原理工大学校园网自动登录工具
 
-这是一个用于全自动挤掉其他人来连上太原理工大学校园网的脚本。
-本质就是向校园网认证服务器发送认证请求包，从而实现连接校园网的目的。
-由于校园网由motionPro提供服务,所以release包也会顺带安装motionPro。
+## 简介
 
-## 使用方法
+这是一个用于自动连接太原理工大学（TYUT）校园网的图形界面工具。它通过内置浏览器模拟登录操作，并提供了智能重试机制，以确保在网络繁忙时也能成功连接。
 
-以下为基础框架与占位实现，需根据实际门户接口补充字段与 URL。
+## ✨ 功能特性
 
-## 配置
+- **图形用户界面 (GUI)**：提供简单易用的操作界面，无需命令行基础。
+- **智能自动重试**：自动检测登录状态，如果连接失败或正在连接中，会耐心等待并有序重试，直到成功或达到次数上限。
+- **多服务器轮询**：可配置多个VPN服务器地址（如 `vpn1`, `vpn2`, `vpn3`），程序会按顺序逐一尝试。
+- **配置管理**：
+  - 启动时自动从 `config.json` 加载账号、密码和服务器地址。
+  - 支持在程序内保存当前配置到新的 `config.json` 文件。
+  - 支持从不同的配置文件中加载（切换账号）。
+- **实时日志**：在界面上实时显示当前的连接状态和操作日志，方便跟踪。
+- **跨平台**：基于 Python 和 PyQt5，可在 Windows, macOS, Linux 上运行。
 
-两种方式（二选一，环境变量优先）：
+## 🚀 如何运行
 
-1. 在仓库根目录创建 `config.json`（已提供示例），字段：
+1.  确保已安装 Python 环境和项目所需的依赖库。
+2.  在项目根目录下运行以下命令：
 
-- username: 学号
-- password: 密码
-- server_url: 门户认证地址（示例为占位）
-- retry_interval_secs: 重试间隔秒数（默认 5）
-- max_retries: 最大重试次数，0 表示无限
+    ```powershell
+    python app.py
+    ```
 
-1. 使用环境变量（PowerShell 示例）：
+## ⚙️ 配置说明
 
-```powershell
-$env:TYUT_USERNAME = "你的学号"
-$env:TYUT_PASSWORD = "你的密码"
-$env:TYUT_SERVER_URL = "https://portal.example.tyut.edu.cn/login"
-$env:TYUT_RETRY_INTERVAL_SECS = "5"
-$env:TYUT_MAX_RETRIES = "0"
+程序启动时会自动读取项目根目录下的 `config.json` 文件。你可以手动创建或修改此文件来预设登录信息。
+
+一个典型的 `config.json` 示例如下：
+
+```json
+{
+    "username": "你的学号",
+    "password": "你的密码",
+    "server_url": [
+        "https://vpn1.tyut.edu.cn",
+        "https://vpn2.tyut.edu.cn",
+        "https://vpn3.tyut.edu.cn"
+    ]
+}
 ```
 
-## 运行
+- `username`: 你的学号。
+- `password`: 你的登录密码。
+- `server_url`: 一个包含多个VPN服务器地址的列表。程序会自动按列表顺序进行尝试。
 
-支持两种入口：
-
-- 作为模块运行（直接开始循环重试直到成功）：
-
-```powershell
-python -m tyutnet
-```
-
-- 通过 CLI（可选择子命令）：
-
-```powershell
-python .\app.py run            # 循环重试
-python .\app.py login          # 单次登录
-python .\app.py logout         # 登出
-python .\app.py status         # 查看状态
-
-# 指定配置文件路径（默认 ./config.json）
-python .\app.py --config .\config.json run
-```
-
-提示：当前 `motionpro_client.py` 为占位实现，真实字段名/URL 需结合 MotionPro 与校园网网关接口调整。
+你也可以在程序运行后，在界面上修改信息，并点击 **“保存账号密码”** 按钮来生成或更新配置文件。
 

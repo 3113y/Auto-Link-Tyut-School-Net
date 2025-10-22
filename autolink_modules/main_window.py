@@ -9,10 +9,18 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel,
     QComboBox, QTextEdit, QHBoxLayout, QFileDialog, QSizePolicy
 )
-from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtGui import QTextOption
 from autolink_modules.config_manager import load_config
+
+
+class CustomWebEnginePage(QWebEnginePage):
+    """自定义页面类，禁止创建新窗口"""
+    def createWindow(self, _type):
+        """禁止创建新窗口，所有链接都在当前页面打开"""
+        return None
+
 
 class AutoLoginWindow(QWidget):
     def __init__(self):
@@ -59,6 +67,9 @@ class AutoLoginWindow(QWidget):
         
         # 网页浏览器
         self.webview = QWebEngineView()
+        # 使用自定义页面类，禁止创建新窗口
+        custom_page = CustomWebEnginePage(self.webview)
+        self.webview.setPage(custom_page)
         self.webview.setZoomFactor(0.8)
         left_layout.addWidget(self.webview, stretch=1)
         
@@ -138,6 +149,7 @@ class AutoLoginWindow(QWidget):
             if self._auto_active:
                 self._try_next_url()
             else:
+                self._log("登录失败，未启用自动重试，停止操作。")
                 self.stop_auto_retry()
             return
 
@@ -184,6 +196,26 @@ class AutoLoginWindow(QWidget):
         else:
             self._log(f"第 {self._captcha_poll_attempts}/{self._captcha_poll_max_attempts} 次轮询，未找到验证码...")
 
+    def check_login_message(self):
+        """检查并输出登录消息"""
+        js_check_message = """
+        (function() {
+            var msgElement = document.getElementById('loginMsg');
+            if (msgElement && msgElement.textContent.trim()) {
+                return msgElement.textContent.trim();
+            }
+            return null;
+        })();
+        """
+        page = self.webview.page()
+        if page:
+            page.runJavaScript(js_check_message, self.handle_login_message_result)
+
+    def handle_login_message_result(self, result):
+        """处理登录消息结果"""
+        if result:
+            self._log(f"登录消息: {result}")
+
     def check_login_status(self):
         """使用JS检查登录状态"""
         js = """
@@ -222,7 +254,12 @@ class AutoLoginWindow(QWidget):
         if status in ['vpn_success_api', 'vpn_success_ui']:
             if self._login_phase == 'vpn' and is_vpn_page:
                 self._log(f"VPN登录成功 (检测方式: {status})。立即跳转...")
-                self.redirect_to_local_auth()
+                # 如果是手动登录模式，跳转后停止
+                if self._manual_login_active:
+                    self._log("手动登录模式下VPN成功，停止自动流程。")
+                    self.stop_auto_retry()
+                else:
+                    self.redirect_to_local_auth()
             else:
                 self._log(f"在非VPN阶段检测到VPN成功状态，停止。")
                 self.stop_auto_retry()
@@ -240,9 +277,17 @@ class AutoLoginWindow(QWidget):
             self._log("仍在登录页面，此地址尝试失败。")
             if self._auto_active:
                 self._try_next_url()
+            elif self._manual_login_active:
+                self._log("手动登录失败，停止操作。")
+                self.stop_auto_retry()
         else:
             self._log(f"状态未知 ({status})，等待后再次检查...")
-            self.status_check_timer.start(3000)
+            if self._manual_login_active:
+                # 手动登录模式下，不继续轮询检查
+                self._log("手动登录模式，停止状态检查。")
+                self.stop_auto_retry()
+            else:
+                self.status_check_timer.start(3000)
 
     def redirect_to_local_auth(self):
         """跳转到内网认证平台"""
@@ -442,6 +487,8 @@ class AutoLoginWindow(QWidget):
         page = self.webview.page()
         if page:
             page.runJavaScript(js_code)
+            # 延迟检查登录消息
+            QTimer.singleShot(2000, self.check_login_message)
         
         self.status_check_timer.start(3000)
 
@@ -513,18 +560,23 @@ class AutoLoginWindow(QWidget):
             self._log("账号和VPN密码不能为空，无法保存！")
             return
         try:
-            cfg_path, _ = QFileDialog.getSaveFileName(self, "保存配置文件", str(Path.cwd() / "config.json"), "JSON Files (*.json)")
-            if cfg_path:
-                urls = [self.url_combo.itemText(i) for i in range(self.url_combo.count())]
-                config_data = {
-                    "username": username,
-                    "vpn_password": vpn_password,
-                    "local_password": local_password,
-                    "server_url": urls
-                }
-                with open(cfg_path, "w", encoding="utf-8") as f:
-                    json.dump(config_data, f, ensure_ascii=False, indent=4)
-                self._log(f"账号密码已保存到 {cfg_path}")
+            # 直接保存到 scripts/config.json，不弹窗
+            cfg_path = Path.cwd() / "scripts" / "config.json"
+            cfg_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            urls = [self.url_combo.itemText(i) for i in range(self.url_combo.count())]
+            config_data = {
+                "username": username,
+                "password": vpn_password,
+                "vpn_password": vpn_password,
+                "local_password": local_password,
+                "server_url": urls,
+                "retry_interval_secs": 5,
+                "max_retries": 0
+            }
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=4)
+            self._log(f"账号密码已保存到 {cfg_path}")
         except Exception as e:
             self._log(f"保存失败：{e}")
 
@@ -552,22 +604,13 @@ class AutoLoginWindow(QWidget):
             self._log(f"切换失败：{e}")
 
     def adjust_webview_to_page(self):
-        """调整webview大小以适应页面"""
-        page = self.webview.page()
-        if page:
-            page.runJavaScript(
-                "document.body.scrollWidth + ',' + document.body.scrollHeight",
-                self._resize_webview
-            )
+        """不再调整webview大小，保持窗口固定尺寸"""
+        # 禁用自动调整大小功能，webview将使用滚动条显示超出视口的内容
+        pass
 
     def _resize_webview(self, result):
-        try:
-            if result:
-                width, height = map(int, result.split(','))
-                if width > 0 and height > 0:
-                    self.webview.setMinimumSize(width, height)
-        except (ValueError, AttributeError):
-            pass
+        """已禁用的调整大小回调"""
+        pass
 
     def debug_log_area_size(self):
         pass

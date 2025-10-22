@@ -1,11 +1,13 @@
 {
-  "username": "2024002302",
-  "password": "ltl@@4554",
-  "server_url": [
-    "https://vpn1.tyut.edu.cn/prx/000/http/localhost/login",
-    "https://vpn2.tyut.edu.cn/prx/000/http/localhost/login",
-    "https://vpn3.tyut.edu.cn/prx/000/http/localhost/login"
-  ],
-  "retry_interval_secs": 5,
-  "max_retries": 0
+    "username": "114514",
+    "password": "1919810",
+    "vpn_password": "1919810",
+    "local_password": "191981022222",
+    "server_url": [
+        "https://vpn1.tyut.edu.cn/prx/000/http/localhost/login",
+        "https://vpn2.tyut.edu.cn/prx/000/http/localhost/login",
+        "https://vpn3.tyut.edu.cn/prx/000/http/localhost/login"
+    ],
+    "retry_interval_secs": 5,
+    "max_retries": 0
 }

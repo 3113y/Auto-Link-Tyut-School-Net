@@ -110,10 +110,18 @@ def load_config(base_dir: Optional[Path] = None) -> AppConfig:
     )
 
 
-def save_config(path: Path, config_data: dict):
-    """保存配置文件"""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(config_data, f, ensure_ascii=False, indent=4)
+def save_config(config: dict, base_dir: Path = Path(__file__).parent / "scripts"):
+    """直接覆盖保存配置到指定位置"""
+    config_path = base_dir / "config.json"
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)  # 确保目录存在
+        # 合并默认配置和当前配置，确保字段完整
+        full_config = example_config()
+        full_config.update(config)
+        with config_path.open("w", encoding="utf-8") as f:
+            json.dump(full_config, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"保存配置失败: {e}")
 
 
 def example_config() -> dict:

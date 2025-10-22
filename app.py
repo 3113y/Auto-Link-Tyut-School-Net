@@ -1,6 +1,6 @@
 import os
 import sys
-from web_auto_login import AutoLoginWindow
+from autolink_modules.main_window import AutoLoginWindow
 from PyQt5.QtWidgets import QApplication
 
 if __name__ == "__main__":

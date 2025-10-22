@@ -300,12 +300,9 @@ class AutoLoginWindow(QWidget):
         try:
             cfg = load_config(Path.cwd())
             self.username_edit.setText(cfg.username)
-            if hasattr(cfg, 'password'):
-                self.vpn_password_edit.setText(cfg.password)
-                self.local_password_edit.setText(cfg.password)
-            else:
-                self.vpn_password_edit.setText(getattr(cfg, 'vpn_password', ''))
-                self.local_password_edit.setText(getattr(cfg, 'local_password', ''))
+
+            self.vpn_password_edit.setText(getattr(cfg, 'vpn_password', ''))
+            self.local_password_edit.setText(getattr(cfg, 'local_password', ''))
 
             self.url_combo.clear()
             for u in cfg.server_url:
@@ -565,9 +562,9 @@ class AutoLoginWindow(QWidget):
             cfg_path.parent.mkdir(parents=True, exist_ok=True)
             
             urls = [self.url_combo.itemText(i) for i in range(self.url_combo.count())]
+            # 移除保存逻辑中的 password 字段，仅保留 vpn_password 和 local_password
             config_data = {
                 "username": username,
-                "password": vpn_password,
                 "vpn_password": vpn_password,
                 "local_password": local_password,
                 "server_url": urls,
@@ -589,12 +586,9 @@ class AutoLoginWindow(QWidget):
                     cfg = json.load(f)
                 self.username_edit.setText(cfg.get("username", ""))
                 
-                if "password" in cfg:
-                    self.vpn_password_edit.setText(cfg.get("password", ""))
-                    self.local_password_edit.setText(cfg.get("password", ""))
-                else:
-                    self.vpn_password_edit.setText(cfg.get("vpn_password", ""))
-                    self.local_password_edit.setText(cfg.get("local_password", ""))
+                # 修改读取逻辑，移除对 password 字段的处理
+                self.vpn_password_edit.setText(cfg.get("vpn_password", ""))
+                self.local_password_edit.setText(cfg.get("local_password", ""))
 
                 self.url_combo.clear()
                 for url in cfg.get("server_url", []):

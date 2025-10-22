@@ -12,7 +12,6 @@ from typing import Optional
 class AppConfig:
     """应用配置数据类"""
     username: str
-    password: str
     server_url: list[str]
     retry_interval_secs: int = 5
     max_retries: int = 0  # 0 表示无限重试
@@ -90,7 +89,6 @@ def load_config(base_dir: Optional[Path] = None) -> AppConfig:
 
     missing = [k for k, v in {
         "username": username,
-        "password": password,
         "server_url": server_url,
     }.items() if not v or (isinstance(v, list) and not v)]
 
@@ -101,7 +99,6 @@ def load_config(base_dir: Optional[Path] = None) -> AppConfig:
 
     return AppConfig(
         username=username,
-        password=password,
         server_url=server_url,
         retry_interval_secs=retry_interval_secs,
         max_retries=max_retries,

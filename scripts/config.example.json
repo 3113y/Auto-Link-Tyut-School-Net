@@ -1,0 +1,12 @@
+{
+    "username": "你的学号",
+    "vpn_password": "VPN密码",
+    "local_password": "教学管理服务平台密码",
+    "server_url": [
+        "https://vpn1.tyut.edu.cn/prx/000/http/localhost/login",
+        "https://vpn2.tyut.edu.cn/prx/000/http/localhost/login",
+        "https://vpn3.tyut.edu.cn/prx/000/http/localhost/login"
+    ],
+    "retry_interval_secs": 5,
+    "max_retries": 0
+}

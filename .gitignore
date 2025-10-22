@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+
+# PyInstaller
+*.exe
+*.app
+*.dmg
+build/
+dist/
+*.spec
+*.pkg
+
+# Release package
+release-package/
+*.zip
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Config (保护敏感信息)
+scripts/config.json
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp

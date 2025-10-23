@@ -2,9 +2,6 @@
 import sys
 from pathlib import Path
 import json
-import requests
-import io
-from PIL import Image, ImageSequence
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QLabel,
     QComboBox, QTextEdit, QHBoxLayout, QFileDialog, QSizePolicy
@@ -13,6 +10,15 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtGui import QTextOption
 from autolink_modules.config_manager import load_config
+from autolink_modules.js_scripts import (
+    get_check_login_status_js,
+    get_check_login_message_js,
+    get_fill_local_auth_fields_js,
+    get_fill_form_and_login_js,
+    get_check_captcha_js,
+    get_captcha_url_js
+)
+from autolink_modules.captcha_handler import CaptchaHandler
 
 
 class CustomWebEnginePage(QWebEnginePage):
@@ -94,6 +100,9 @@ class AutoLoginWindow(QWidget):
         right_layout.addWidget(self.save_btn)
         right_layout.addWidget(self.switch_btn)
         
+        self.extract_captcha_btn = QPushButton("提取验证码样本")
+        right_layout.addWidget(self.extract_captcha_btn)
+        
         # 日志区域
         right_layout.addWidget(QLabel("日志:"))
         self.log_area = QTextEdit()
@@ -126,6 +135,15 @@ class AutoLoginWindow(QWidget):
         self._captcha_poll_attempts = 0
         self._captcha_poll_max_attempts = 10
 
+        # 验证码处理器
+        self.captcha_handler = CaptchaHandler()
+        
+        # 验证码提取相关
+        self._extract_mode = False
+        self._extracted_count = 0
+        self._extract_target = 1000
+        self._captcha_save_dir = Path.cwd() / "captcha_samples"
+
         # --- Connections ---
         self._load_config()
         self.login_btn.clicked.connect(self.login_once)
@@ -133,6 +151,7 @@ class AutoLoginWindow(QWidget):
         self.stop_btn.clicked.connect(self.stop_auto_retry)
         self.save_btn.clicked.connect(self.save_credentials)
         self.switch_btn.clicked.connect(self.switch_credentials)
+        self.extract_captcha_btn.clicked.connect(self.toggle_extract_mode)
         self.webview.loadFinished.connect(self.on_load_finished)
         self.log_area.textChanged.connect(self.debug_log_area_size)
 
@@ -158,9 +177,11 @@ class AutoLoginWindow(QWidget):
 
         if self._login_phase == 'local_auth':
             if self._local_auth_url in current_url:
-                self._log("教学管理服务平台页面加载完成，自动填充账号密码（暂不识别验证码和登录）...")
-                # 临时屏蔽验证码识别功能，只填充账号密码
+                self._log("教学管理服务平台页面加载完成，自动填充账号密码...")
                 self.fill_local_auth_fields_only()
+                if self._extract_mode:
+                    self._log("📌 提取模式已开启，准备提取验证码...")
+                    self._log("提示：验证码已出现在页面上，点击下方继续提取")
             else:
                 self._log("警告: 处于教学管理服务平台登录阶段，但加载了非预期的URL。")
                 if self._auto_active:
@@ -178,10 +199,9 @@ class AutoLoginWindow(QWidget):
 
     def poll_for_captcha(self):
         """轮询检查验证码图片是否加载"""
-        js_check_captcha = "document.getElementById('img_lazycaptcha') && document.getElementById('img_lazycaptcha').src"
         page = self.webview.page()
         if page:
-            page.runJavaScript(js_check_captcha, self.handle_poll_for_captcha_result)
+            page.runJavaScript(get_check_captcha_js(), self.handle_poll_for_captcha_result)
 
     def handle_poll_for_captcha_result(self, result):
         self._captcha_poll_attempts += 1
@@ -198,18 +218,9 @@ class AutoLoginWindow(QWidget):
 
     def check_login_message(self):
         """检查并输出登录消息"""
-        js_check_message = """
-        (function() {
-            var msgElement = document.getElementById('loginMsg');
-            if (msgElement && msgElement.textContent.trim()) {
-                return msgElement.textContent.trim();
-            }
-            return null;
-        })();
-        """
         page = self.webview.page()
         if page:
-            page.runJavaScript(js_check_message, self.handle_login_message_result)
+            page.runJavaScript(get_check_login_message_js(), self.handle_login_message_result)
 
     def handle_login_message_result(self, result):
         """处理登录消息结果"""
@@ -218,33 +229,9 @@ class AutoLoginWindow(QWidget):
 
     def check_login_status(self):
         """使用JS检查登录状态"""
-        js = """
-        (function() {
-            if (typeof motionpro !== 'undefined' && motionpro.vpn && motionpro.vpn.status === 1) {
-                return 'vpn_success_api';
-            }
-            var vpnOffButton = document.querySelector('#vpnOff');
-            if (vpnOffButton && vpnOffButton.className === 'btn') {
-                return 'vpn_success_ui';
-            }
-            var vpnOnButton = document.querySelector('#vpnOn');
-            var unameField = document.querySelector('[name="uname"]');
-            var loginButton = document.querySelector('#login');
-            if (!loginButton && !unameField && window.location.href.includes('192.168.200.100')) {
-                return 'local_auth_success';
-            }
-            if (vpnOnButton && vpnOnButton.hasAttribute('disabled')) {
-                return 'connecting';
-            }
-            if (unameField) {
-                return 'failure';
-            }
-            return 'unknown';
-        })();
-        """
         page = self.webview.page()
         if page:
-            page.runJavaScript(js, self.handle_login_status_result)
+            page.runJavaScript(get_check_login_status_js(), self.handle_login_status_result)
 
     def handle_login_status_result(self, status):
         """处理登录状态检查结果"""
@@ -253,13 +240,8 @@ class AutoLoginWindow(QWidget):
 
         if status in ['vpn_success_api', 'vpn_success_ui']:
             if self._login_phase == 'vpn' and is_vpn_page:
-                self._log(f"VPN登录成功 (检测方式: {status})。立即跳转...")
-                # 如果是手动登录模式，跳转后停止
-                if self._manual_login_active:
-                    self._log("手动登录模式下VPN成功，停止自动流程。")
-                    self.stop_auto_retry()
-                else:
-                    self.redirect_to_local_auth()
+                self._log(f"VPN登录成功 (检测方式: {status})。立即跳转到内网平台...")
+                self.redirect_to_local_auth()
             else:
                 self._log(f"在非VPN阶段检测到VPN成功状态，停止。")
                 self.stop_auto_retry()
@@ -339,106 +321,38 @@ class AutoLoginWindow(QWidget):
         
         self._log(f"自动填充账号: {username}，请手动输入验证码并登录。")
         
-        js_code = f"""
-        (function() {{
-            var unameField = document.getElementById('txt_username');
-            var pwdField = document.getElementById('txt_password');
-
-            if (unameField && pwdField) {{
-                console.log('找到教学管理服务平台登录表单字段，自动填充账号密码。');
-                unameField.value = "{username}";
-                pwdField.value = "{password}";
-                console.log('账号密码已填充，请手动输入验证码并点击登录按钮。');
-            }} else {{
-                console.error('未找到教学管理服务平台登录表单字段。');
-                if (!unameField) console.error('Username field (txt_username) not found.');
-                if (!pwdField) console.error('Password field (txt_password) not found.');
-            }}
-        }})();
-        """
-        
         page = self.webview.page()
         if page:
-            page.runJavaScript(js_code)
+            page.runJavaScript(get_fill_local_auth_fields_js(username, password))
 
     def start_captcha_login_process(self):
         """开始验证码登录流程"""
         self._log("开始识别验证码...")
-        js_get_captcha_url = "document.getElementById('img_lazycaptcha').src;"
         page = self.webview.page()
         if page:
-            page.runJavaScript(js_get_captcha_url, self.solve_captcha)
+            page.runJavaScript(get_captcha_url_js(), self.solve_captcha)
 
     def solve_captcha(self, captcha_url):
-        """下载并识别验证码"""
+        """下载并识别验证码（当前未启用自动识别）"""
         if not captcha_url:
             self._log("未找到验证码图片URL，直接尝试登录...")
             self.fill_form_and_click(None)
             return
 
         self._log(f"获取到验证码地址: {captcha_url}")
-        try:
-            response = requests.get(captcha_url, timeout=10)
-            response.raise_for_status()
-
-            self._log("正在处理GIF验证码...")
-            processed_image_bytes = self._process_gif_captcha(response.content)
-            
-            # 删除依赖 ddddocr 的代码
-            # captcha_text = self.ocr.classification(processed_image_bytes)
-            # 替换为占位符
-            captcha_text = ""
-
-            self._log(f"OCR 识别结果: {captcha_text}")
-
-            try:
-                captcha_result = self._safe_eval(captcha_text)
-                self._log(f"验证码计算结果: {captcha_result}")
-                self.fill_form_and_click(str(captcha_result))
-            except Exception as e:
-                self._log(f"验证码计算失败: {e}。将使用原始识别文本。")
-                self.fill_form_and_click(captcha_text)
-
-        except requests.RequestException as e:
-            self._log(f"下载验证码失败: {e}")
+        
+        # 当前不自动识别验证码，因为模型尚未训练
+        # 使用验证码处理器
+        success, result, error_msg = self.captcha_handler.download_and_solve(captcha_url)
+        
+        if success:
+            if error_msg:
+                self._log(error_msg)
+            self._log(f"验证码识别结果: {result}")
+            self.fill_form_and_click(result)
+        else:
+            self._log(f"验证码处理失败: {error_msg}")
             self.fill_form_and_click(None)
-        except Exception as e:
-            self._log(f"OCR 识别或GIF处理时发生未知错误: {e}")
-            self.fill_form_and_click(None)
-
-    def _process_gif_captcha(self, image_bytes, background_threshold=220):
-        """处理GIF验证码：提取帧、去背景、合成"""
-        with Image.open(io.BytesIO(image_bytes)) as img:
-            canvas = Image.new('RGBA', img.size, (255, 255, 255, 0))
-            
-            for frame in ImageSequence.Iterator(img):
-                frame = frame.convert('RGBA')
-                processed_frame = Image.new('RGBA', frame.size, (255, 255, 255, 0))
-                
-                frame_data = frame.load()
-                processed_data = processed_frame.load()
-
-                if not frame_data or not processed_data:
-                    continue
-
-                for y in range(frame.height):
-                    for x in range(frame.width):
-                        pixel = frame_data[x, y]
-                        if pixel[0] < background_threshold or pixel[1] < background_threshold or pixel[2] < background_threshold:
-                            processed_data[x, y] = pixel
-                
-                canvas = Image.alpha_composite(canvas, processed_frame)
-
-            final_image_bytes = io.BytesIO()
-            canvas.save(final_image_bytes, format='PNG')
-            return final_image_bytes.getvalue()
-
-    def _safe_eval(self, expr_str):
-        """安全地计算简单算术表达式"""
-        expr_str = expr_str.replace('x', '*').replace('÷', '/')
-        if not all(c in '0123456789+-*/. ' for c in expr_str):
-            raise ValueError("表达式包含不允许的字符")
-        return eval(expr_str)
 
     def fill_form_and_click(self, captcha_result):
         """填充表单并点击登录"""
@@ -452,38 +366,9 @@ class AutoLoginWindow(QWidget):
             password = self.vpn_password_edit.text().strip()
             self._log("使用VPN密码。")
 
-        js_code = f"""
-        (function() {{
-            var unameField = document.querySelector('[name="uname"]') || document.getElementById('txt_username');
-            var pwdField = document.querySelector('[name="pwd"]') || document.getElementById('txt_password');
-            var captchaField = document.getElementById('captcha') || document.getElementById('txt_lazycaptcha');
-            var loginButton = document.querySelector('#login') || document.getElementById('btn_login');
-
-            if (unameField && pwdField && loginButton) {{
-                console.log('找到登录表单字段。');
-                unameField.value = "{username}";
-                pwdField.value = "{password}";
-
-                var captchaVal = "{captcha_result or ''}";
-                if (captchaField && captchaVal) {{
-                    console.log('填充验证码...');
-                    captchaField.value = captchaVal;
-                }}
-
-                console.log('尝试点击登录按钮...');
-                loginButton.click();
-            }} else {{
-                console.error('登录表单字段或按钮未找到。无法执行登录。');
-                if (!unameField) console.error('Username field not found.');
-                if (!pwdField) console.error('Password field not found.');
-                if (!loginButton) console.error('Login button not found.');
-            }}
-        }})();
-        """
-
         page = self.webview.page()
         if page:
-            page.runJavaScript(js_code)
+            page.runJavaScript(get_fill_form_and_login_js(username, password, captcha_result))
             # 延迟检查登录消息
             QTimer.singleShot(2000, self.check_login_message)
         
@@ -608,6 +493,94 @@ class AutoLoginWindow(QWidget):
 
     def debug_log_area_size(self):
         pass
+    
+    def toggle_extract_mode(self):
+        """切换验证码提取模式 / 自动连续提取验证码"""
+        current_url = self.webview.url().toString()
+        is_local_platform = self._local_auth_url in current_url
+        self._extract_mode = not self._extract_mode
+        if self._extract_mode:
+            self._extracted_count = 0
+            self._captcha_save_dir.mkdir(exist_ok=True)
+            self.extract_captcha_btn.setText(f"自动提取验证码 ({self._extracted_count}/{self._extract_target})")
+            self._log(f"✓ 自动验证码提取模式已开启！目标: {self._extract_target} 张")
+            self._log(f"保存目录: {self._captcha_save_dir.absolute()}")
+            self._log("📌 自动流程: 自动点击验证码图片，自动保存，直到达到目标数量")
+            if is_local_platform:
+                self._log("开始自动提取验证码...")
+                self.auto_extract_captcha()
+            else:
+                self._log("请先登录到教学管理服务平台，再开启自动提取模式。")
+        else:
+            self.extract_captcha_btn.setText("提取验证码样本")
+            self._log(f"✓ 自动验证码提取模式已关闭。共提取: {self._extracted_count} 张")
+
+    def auto_extract_captcha(self):
+        """自动点击验证码图片并保存，循环直到目标数量"""
+        if not self._extract_mode or self._extracted_count >= self._extract_target:
+            self._log(f"自动提取已完成或已关闭。共提取: {self._extracted_count} 张")
+            self.extract_captcha_btn.setText("提取验证码样本")
+            self._extract_mode = False
+            return
+        page = self.webview.page()
+        if page:
+            # 1. 获取当前验证码URL
+            page.runJavaScript(get_captcha_url_js(), self.handle_auto_extract_captcha)
+
+    def handle_auto_extract_captcha(self, captcha_url):
+        """自动提取验证码回调"""
+        if not captcha_url:
+            self._log("✗ 未找到验证码图片URL，等待页面加载...")
+            QTimer.singleShot(1000, self.auto_extract_captcha)
+            return
+        self._log(f"✓ 检测到验证码地址: {captcha_url}")
+        self.save_captcha_sample(captcha_url, after_save=self.simulate_click_and_wait)
+
+    def simulate_click_and_wait(self):
+        """模拟点击验证码图片，等待新验证码加载后继续自动提取"""
+        page = self.webview.page()
+        if page:
+            # 2. 模拟点击验证码图片，触发刷新
+            js_click = """
+            var img = document.getElementById('img_lazycaptcha');
+            if(img) { img.click(); }
+            """
+            page.runJavaScript(js_click)
+            self._log("已自动点击验证码图片，等待新验证码加载...")
+            # 3. 等待新验证码加载后继续提取
+            QTimer.singleShot(1500, self.auto_extract_captcha)
+
+    
+    def save_captcha_sample(self, captcha_url, after_save=None):
+        """保存验证码样本，支持回调"""
+        if self._extracted_count >= self._extract_target:
+            self._log(f"✓ 已达到目标数量 {self._extract_target} 张，停止提取")
+            self._extract_mode = False
+            self.extract_captcha_btn.setText("提取验证码样本")
+            return
+        try:
+            import requests
+            from datetime import datetime
+            response = requests.get(captcha_url, timeout=10)
+            response.raise_for_status()
+            processed_bytes = self.captcha_handler.process_gif_captcha(response.content)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            filename = f"captcha_{timestamp}.png"
+            filepath = self._captcha_save_dir / filename
+            with open(filepath, 'wb') as f:
+                f.write(processed_bytes)
+            self._extracted_count += 1
+            self._log(f"✓ 已保存 ({self._extracted_count}/{self._extract_target}): {filename}")
+            self.extract_captcha_btn.setText(f"自动提取验证码 ({self._extracted_count}/{self._extract_target})")
+            if self._extracted_count >= self._extract_target:
+                self._log(f"🎉 验证码提取完成！共 {self._extracted_count} 张")
+                self._log(f"保存位置: {self._captcha_save_dir.absolute()}")
+                self._extract_mode = False
+                self.extract_captcha_btn.setText("提取验证码样本")
+            elif after_save:
+                QTimer.singleShot(500, after_save)
+        except Exception as e:
+            self._log(f"✗ 保存验证码失败: {e}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

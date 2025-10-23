@@ -50,3 +50,13 @@ scripts/config.json
 # Temporary files
 *.tmp
 *.temp
+
+# Training data and models
+captcha_samples/
+captcha_templates/
+saved_models/
+*.pth
+*.pt
+*.onnx
+*.h5
+*.pkl

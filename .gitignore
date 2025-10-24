@@ -51,12 +51,20 @@ scripts/config.json
 *.tmp
 *.temp
 
-# Training data and models
+# Training data and models (训练数据集不上传)
 captcha_samples/
 captcha_templates/
 saved_models/
 *.pth
 *.pt
-*.onnx
-*.h5
 *.pkl
+
+# ONNX models (保留已训练好的模型)
+# models/*.onnx 文件会被保留用于发布
+
+# Build files
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc

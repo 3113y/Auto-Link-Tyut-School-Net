@@ -2,7 +2,7 @@
 
 ## 简介
 
-这是一个用于自动连接太原理工大学（TYUT）教学管理服务平台的图形界面工具。它通过内置浏览器自动完成 VPN 登录和内网认证两个阶段，并提供了智能重试机制，确保在网络繁忙时也能成功连接。
+这是一个用于自动连接太原理工大学（TYUT）教学管理服务平台的图形界面工具。它通过内置浏览器自动完成 VPN 登录和内网认证两个阶段，并集成了**基于 ONNX 深度学习模型的验证码自动识别功能**，实现真正的全自动登录。
 
 ## ✨ 功能特性
 
@@ -10,14 +10,14 @@
 - **双阶段自动登录**：
   - 自动完成 VPN 登录（vpn.tyut.edu.cn）
   - 自动跳转并登录教学管理服务平台（192.168.200.100）
+- **🤖 AI 验证码自动识别** ：
+  - 基于CNN导出的ONNX深度学习模型（98.99% 准确率）
+  - 自动识别算术验证码（如 "8-6=?"）
+  - 自动计算并填入结果
+  - 无需手动输入，真正实现全自动登录
 - **两种登录模式**：
   - **登录一次**：手动触发单次登录尝试，失败后不自动重试
   - **自动重试**：智能检测登录状态，自动重试直到成功或达到次数上限
-- **验证码提取功能** 🆕：
-  - 一键开启验证码样本提取模式
-  - 在登录过程中自动保存处理后的验证码图片
-  - 支持批量提取用于深度学习训练
-  - 详见 [验证码提取指南](EXTRACT_CAPTCHA_GUIDE.md)
 - **多服务器轮询**：配置多个 VPN 服务器地址（`vpn1`, `vpn2`, `vpn3`），程序会按顺序逐一尝试。
 - **多密码支持**：
   - 支持分别配置 VPN 密码和教学管理服务平台密码
@@ -30,21 +30,41 @@
 - **防止窗口堆积**：禁止创建新窗口，所有操作都在当前页面进行。
 - **跨平台**：基于 Python 和 PyQt5，可在 Windows, macOS, Linux 上运行。
 
-## 🚀 如何运行
+## 🚀 快速开始
 
 ### 方式一：直接运行可执行文件（推荐）
 
-1. 下载最新的 Release 版本中的 `ATSN.exe` 文件
-2. 双击运行即可，无需安装 Python 环境
+1. 从 [Releases](https://github.com/3113y/Auto-Link-Tyut-School-Net/releases) 下载最新版本的 `TYUT-AutoLogin.exe`
+2. 双击运行即可，**无需安装 Python 环境**
+3. 首次使用时填写账号密码并保存，之后即可一键登录
 
 ### 方式二：从源码运行
 
-1. 确保已安装 Python 环境和项目所需的依赖库(见requirements.txt)
-2. 在项目根目录下运行以下命令：
+1. 克隆项目：
+    ```bash
+    git clone https://github.com/3113y/Auto-Link-Tyut-School-Net.git
+    cd Auto-Link-Tyut-School-Net
+    ```
 
-    ```powershell
+2. 安装依赖：
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3. 运行程序：
+    ```bash
     python app.py
     ```
+
+## 🔧 打包为可执行文件
+
+如果你想自己打包生成 `.exe` 文件：
+
+```bash
+python build_spec.py
+```
+
+打包完成后，可执行文件位于 `dist/TYUT-AutoLogin.exe`
 
 ## ⚙️ 配置说明
 
@@ -109,11 +129,18 @@ Auto-Link-Tyut-School-Net/
 ├── app.py                      # 程序入口
 ├── autolink_modules/           # 模块化代码
 │   ├── main_window.py         # 主窗口逻辑
+│   ├── captcha_handler.py     # 验证码处理器（ONNX模型）
+│   ├── preprocess_helper.py   # 智能预处理
 │   ├── config_manager.py      # 配置管理
+│   ├── js_scripts.py          # JavaScript注入脚本
 │   └── login_logic.py         # 登录逻辑
+├── models/                     # ONNX模型文件
+│   ├── best_model_digits.onnx # 数字识别模型
+│   └── best_model_operators.onnx # 运算符识别模型
 ├── scripts/                    # 配置文件夹
 │   └── config.json            # 用户配置文件
-├── icon.ico                    # 应用图标
+├── resources/                  # 资源文件
+│   └── icon.ico               # 应用图标
 └── readme.md                   # 说明文档
 ```
 

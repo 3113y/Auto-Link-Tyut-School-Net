@@ -182,6 +182,11 @@ class AutoLoginWindow(QWidget):
                 if self._extract_mode:
                     self._log("📌 提取模式已开启，准备提取验证码...")
                     self._log("提示：验证码已出现在页面上，点击下方继续提取")
+                else:
+                    # 非提取模式下，启动自动验证码识别和登录
+                    self._log("开始轮询验证码图片...")
+                    self._captcha_poll_attempts = 0
+                    self.captcha_poll_timer.start(500)
             else:
                 self._log("警告: 处于教学管理服务平台登录阶段，但加载了非预期的URL。")
                 if self._auto_active:
@@ -333,16 +338,12 @@ class AutoLoginWindow(QWidget):
             page.runJavaScript(get_captcha_url_js(), self.solve_captcha)
 
     def solve_captcha(self, captcha_url):
-        """下载并识别验证码（当前未启用自动识别）"""
         if not captcha_url:
             self._log("未找到验证码图片URL，直接尝试登录...")
             self.fill_form_and_click(None)
             return
 
         self._log(f"获取到验证码地址: {captcha_url}")
-        
-        # 当前不自动识别验证码，因为模型尚未训练
-        # 使用验证码处理器
         success, result, error_msg = self.captcha_handler.download_and_solve(captcha_url)
         
         if success:

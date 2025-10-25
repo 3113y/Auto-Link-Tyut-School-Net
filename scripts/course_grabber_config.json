@@ -1,0 +1,21 @@
+{
+    "settings": {
+        "enabled": false,
+        "auto_refresh_interval": 1,
+        "max_attempts": 1000,
+        "attempt_interval": 100,
+        "notify_on_success": true,
+        "notify_on_failure": true
+    },
+    "courses": [
+        {
+            "course_id": "EXAMPLE001",
+            "course_name": "示例课程",
+            "teacher_name": "张三",
+            "priority": 1,
+            "start_time": "2025-02-01T08:00:00",
+            "notes": "这是一个示例课程配置",
+            "status": "pending"
+        }
+    ]
+}

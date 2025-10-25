@@ -19,6 +19,7 @@ from autolink_modules.js_scripts import (
     get_captcha_url_js
 )
 from autolink_modules.captcha_handler import CaptchaHandler
+from autolink_modules.html_recorder import HTMLRecorder
 
 
 class CustomWebEnginePage(QWebEnginePage):
@@ -103,6 +104,17 @@ class AutoLoginWindow(QWidget):
         self.extract_captcha_btn = QPushButton("提取验证码样本")
         right_layout.addWidget(self.extract_captcha_btn)
         
+        # === 抢课辅助功能按钮 ===
+        right_layout.addWidget(QLabel("\n抢课辅助工具:"))
+        self.save_html_btn = QPushButton("💾 保存当前页面HTML")
+        self.start_record_btn = QPushButton("🎬 开始录制操作")
+        self.stop_record_btn = QPushButton("⏹ 停止录制")
+        self.stop_record_btn.setEnabled(False)
+        
+        right_layout.addWidget(self.save_html_btn)
+        right_layout.addWidget(self.start_record_btn)
+        right_layout.addWidget(self.stop_record_btn)
+        
         # 日志区域
         right_layout.addWidget(QLabel("日志:"))
         self.log_area = QTextEdit()
@@ -138,6 +150,10 @@ class AutoLoginWindow(QWidget):
         # 验证码处理器
         self.captcha_handler = CaptchaHandler()
         
+        # HTML 录制器
+        self.html_recorder = HTMLRecorder(self.webview)
+        self.html_recorder.log_message.connect(self.log)
+        
         # 验证码提取相关
         self._extract_mode = False
         self._extracted_count = 0
@@ -152,6 +168,9 @@ class AutoLoginWindow(QWidget):
         self.save_btn.clicked.connect(self.save_credentials)
         self.switch_btn.clicked.connect(self.switch_credentials)
         self.extract_captcha_btn.clicked.connect(self.toggle_extract_mode)
+        self.save_html_btn.clicked.connect(self.on_save_html)
+        self.start_record_btn.clicked.connect(self.on_start_recording)
+        self.stop_record_btn.clicked.connect(self.on_stop_recording)
         self.webview.loadFinished.connect(self.on_load_finished)
         self.log_area.textChanged.connect(self.debug_log_area_size)
 
@@ -582,6 +601,25 @@ class AutoLoginWindow(QWidget):
                 QTimer.singleShot(500, after_save)
         except Exception as e:
             self._log(f"✗ 保存验证码失败: {e}")
+    
+    # === 抢课辅助功能 ===
+    
+    def on_save_html(self):
+        """保存当前页面 HTML"""
+        self.log("开始保存当前页面 HTML...")
+        self.html_recorder.save_current_html()
+    
+    def on_start_recording(self):
+        """开始录制操作"""
+        self.html_recorder.start_recording_actions()
+        self.start_record_btn.setEnabled(False)
+        self.stop_record_btn.setEnabled(True)
+    
+    def on_stop_recording(self):
+        """停止录制操作"""
+        self.html_recorder.stop_recording_and_save()
+        self.start_record_btn.setEnabled(True)
+        self.stop_record_btn.setEnabled(False)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

@@ -1,4 +1,0 @@
-<!DOCTYPE RCC><RCC version="1.0">
-<qresource prefix="/js">
-    <file>get_select_course.js</file>
-</qresource>

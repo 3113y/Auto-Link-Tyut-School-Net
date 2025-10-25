@@ -1,3 +1,0 @@
-E:/Auto Link Tyut School Net/build_c/CMakeFiles/tyut_auto_login.dir
-E:/Auto Link Tyut School Net/build_c/CMakeFiles/ALL_BUILD.dir
-E:/Auto Link Tyut School Net/build_c/CMakeFiles/ZERO_CHECK.dir

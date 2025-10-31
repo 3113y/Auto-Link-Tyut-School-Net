@@ -104,3 +104,161 @@ def get_check_captcha_js():
 def get_captcha_url_js():
     """获取验证码图片 URL 的 JavaScript 代码"""
     return "document.getElementById('img_lazycaptcha').src;"
+
+
+# ==================== 抢课模块 JS 脚本 ====================
+
+def get_check_course_page_js():
+    """检查是否在选课页面"""
+    return """
+    (function() {
+        // TODO: 根据实际选课页面调整选择器
+        var courseTable = document.querySelector('.course-table') || 
+                         document.querySelector('[id*="course"]') ||
+                         document.querySelector('[class*="select-course"]');
+        return courseTable !== null;
+    })();
+    """
+
+
+def get_search_course_js(course_name=None, teacher_name=None, course_id=None):
+    """搜索课程的 JavaScript 代码"""
+    return f"""
+    (function() {{
+        // TODO: 根据实际页面调整选择器
+        var searchInput = document.querySelector('#courseSearchInput') || 
+                         document.querySelector('[name="courseName"]');
+        var searchBtn = document.querySelector('#searchBtn') || 
+                       document.querySelector('.search-button');
+        
+        if (searchInput) {{
+            searchInput.value = "{course_name or ''}";
+            if (searchBtn) {{
+                searchBtn.click();
+                return 'search_triggered';
+            }}
+            return 'search_input_filled';
+        }}
+        return 'search_field_not_found';
+    }})();
+    """
+
+
+def get_select_course_js(course_id=None, course_name=None, teacher_name=None):
+    """选课的 JavaScript 代码（核心功能）"""
+    return f"""
+    (function() {{
+        // TODO: 根据实际页面调整选择器
+        // 方法1: 通过课程ID查找
+        var courseRow = document.querySelector('[data-course-id="{course_id}"]');
+        
+        // 方法2: 通过课程名称和教师名称查找
+        if (!courseRow && "{course_name}") {{
+            var allRows = document.querySelectorAll('.course-row, tr');
+            for (var i = 0; i < allRows.length; i++) {{
+                var row = allRows[i];
+                var nameCell = row.querySelector('.course-name') || row.cells[1];
+                var teacherCell = row.querySelector('.teacher-name') || row.cells[2];
+                
+                if (nameCell && nameCell.textContent.includes("{course_name}")) {{
+                    if (!"{teacher_name}" || (teacherCell && teacherCell.textContent.includes("{teacher_name}"))) {{
+                        courseRow = row;
+                        break;
+                    }}
+                }}
+            }}
+        }}
+        
+        if (!courseRow) {{
+            return 'course_not_found';
+        }}
+        
+        // 查找选课按钮
+        var selectBtn = courseRow.querySelector('.select-btn') || 
+                       courseRow.querySelector('[class*="select"]') ||
+                       courseRow.querySelector('button');
+        
+        if (!selectBtn) {{
+            return 'button_not_found';
+        }}
+        
+        // 检查按钮状态
+        if (selectBtn.disabled || selectBtn.classList.contains('disabled')) {{
+            return 'course_full';
+        }}
+        
+        // 点击选课按钮
+        selectBtn.click();
+        
+        // 等待确认弹窗
+        setTimeout(function() {{
+            var confirmBtn = document.querySelector('.confirm-select') || 
+                           document.querySelector('[class*="confirm"]') ||
+                           document.querySelector('.swal2-confirm');
+            if (confirmBtn) {{
+                confirmBtn.click();
+            }}
+        }}, 100);
+        
+        return 'select_clicked';
+    }})();
+    """
+
+
+def get_check_select_result_js():
+    """检查选课结果"""
+    return """
+    (function() {
+        // TODO: 根据实际页面调整选择器
+        // 检查成功提示
+        var successMsg = document.querySelector('.success-message') || 
+                        document.querySelector('[class*="success"]');
+        if (successMsg && successMsg.textContent.includes('成功')) {
+            return 'success';
+        }
+        
+        // 检查失败提示
+        var errorMsg = document.querySelector('.error-message') || 
+                      document.querySelector('[class*="error"]');
+        if (errorMsg) {
+            return 'failed: ' + errorMsg.textContent.trim();
+        }
+        
+        // 检查课程是否已满
+        if (document.body.textContent.includes('已满') || 
+            document.body.textContent.includes('人数已满')) {
+            return 'course_full';
+        }
+        
+        return 'unknown';
+    })();
+    """
+
+
+def get_course_list_js():
+    """获取当前页面的课程列表信息"""
+    return """
+    (function() {
+        // TODO: 根据实际页面调整选择器
+        var courses = [];
+        var rows = document.querySelectorAll('.course-row, tbody tr');
+        
+        rows.forEach(function(row) {
+            var nameCell = row.querySelector('.course-name') || row.cells[1];
+            var teacherCell = row.querySelector('.teacher-name') || row.cells[2];
+            var statusCell = row.querySelector('.course-status') || row.cells[3];
+            var selectBtn = row.querySelector('.select-btn') || row.querySelector('button');
+            
+            if (nameCell) {
+                courses.push({
+                    name: nameCell.textContent.trim(),
+                    teacher: teacherCell ? teacherCell.textContent.trim() : '',
+                    status: statusCell ? statusCell.textContent.trim() : '',
+                    available: selectBtn ? !selectBtn.disabled : false
+                });
+            }
+        });
+        
+        return JSON.stringify(courses);
+    })();
+    """

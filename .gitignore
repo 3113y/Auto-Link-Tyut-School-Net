@@ -44,6 +44,9 @@ desktop.ini
 # Config (保护敏感信息)
 scripts/config.json
 
+# Recorded sessions (操作录制结果)
+recorded_sessions/
+
 # Logs
 *.log
 

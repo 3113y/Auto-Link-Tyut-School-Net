@@ -546,7 +546,6 @@ class AutoLoginWindow(QWidget):
         self.start_record_btn.setEnabled(True)
         self.stop_record_btn.setEnabled(False)
 
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     win = AutoLoginWindow()

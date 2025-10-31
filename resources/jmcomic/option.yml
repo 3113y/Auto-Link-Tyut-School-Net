@@ -1,0 +1,34 @@
+client:
+  cache: null
+  domain: []
+  impl: api
+  postman:
+    meta_data:
+      headers: null
+      impersonate: chrome
+      proxies:
+        http: 127.0.0.1:7897
+        https: 127.0.0.1:7897
+    type: curl_cffi
+  retry_times: 5
+dir_rule:
+  base_dir: ${APP_DIR}/resources/downloads
+  normalize_zh: null
+  rule: Bd / Ptitle
+download:
+  cache: true
+  image:
+    decode: true
+    suffix: null
+  threading:
+    image: 30
+    photo: 24
+log: true
+plugins:
+  valid: log
+  after_photo:
+    - plugin: img2pdf
+      kwargs:
+        pdf_dir: ${APP_DIR}/resources/downloads/pdf
+        filename_rule: Pid
+version: '2.1'

@@ -1,5 +1,5 @@
 # 主窗口与UI相关逻辑
-import sys
+import sys, os
 from pathlib import Path
 import json
 from PyQt5.QtWidgets import (
@@ -19,7 +19,7 @@ from autolink_modules.js_scripts import (
     get_captcha_url_js
 )
 from autolink_modules.captcha_handler import CaptchaHandler
-
+from autolink_modules.jmcomic_logic import JMComicWidget
 
 class CustomWebEnginePage(QWebEnginePage):
     """自定义页面类，禁止创建新窗口"""
@@ -30,6 +30,8 @@ class CustomWebEnginePage(QWebEnginePage):
 
 class AutoLoginWindow(QWidget):
     def __init__(self):
+        jmcomic_option_path = os.path.join(os.path.dirname(__file__), '../resources/jmcomic/option.yml')
+        jmcomic_enabled = os.path.exists(jmcomic_option_path)
         super().__init__()
         self.setWindowTitle("TYUT教学管理服务平台自动登录")
         self.resize(1200, 700)
@@ -100,9 +102,25 @@ class AutoLoginWindow(QWidget):
         right_layout.addWidget(self.save_btn)
         right_layout.addWidget(self.switch_btn)
         
-        self.extract_captcha_btn = QPushButton("提取验证码样本")
-        right_layout.addWidget(self.extract_captcha_btn)
+        # === 抢课辅助功能按钮 ===
+        right_layout.addWidget(QLabel("\n抢课辅助工具:"))
+        self.save_html_btn = QPushButton("💾 保存当前页面HTML")
+        self.start_record_btn = QPushButton("🎬 开始录制操作")
+        self.stop_record_btn = QPushButton("⏹ 停止录制")
+        self.stop_record_btn.setEnabled(False)
         
+        right_layout.addWidget(self.save_html_btn)
+        right_layout.addWidget(self.start_record_btn)
+        right_layout.addWidget(self.stop_record_btn)
+        
+        # JMComic爬虫按钮
+        self.jmcomic_btn = QPushButton("JMComic爬虫")
+        if jmcomic_enabled:
+            right_layout.addWidget(self.jmcomic_btn)
+            self.jmcomic_btn.clicked.connect(self.show_jmcomic_window)
+        else:
+            self.jmcomic_btn.hide()
+
         # 日志区域
         right_layout.addWidget(QLabel("日志:"))
         self.log_area = QTextEdit()
@@ -110,10 +128,10 @@ class AutoLoginWindow(QWidget):
         self.log_area.setMinimumWidth(300)
         self.log_area.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         right_layout.addWidget(self.log_area, stretch=1)
-        
+
         right_widget.setLayout(right_layout)
         main_layout.addWidget(right_widget, stretch=1)
-        
+
         self.setLayout(main_layout)
 
         # --- State and Timers ---
@@ -138,12 +156,10 @@ class AutoLoginWindow(QWidget):
         # 验证码处理器
         self.captcha_handler = CaptchaHandler()
         
-        # 验证码提取相关
-        self._extract_mode = False
-        self._extracted_count = 0
-        self._extract_target = 1000
-        self._captcha_save_dir = Path.cwd() / "captcha_samples"
-
+        # HTML 录制器
+        self.html_recorder = HTMLRecorder(self.webview)
+        self.html_recorder.log_message.connect(self._log)
+        
         # --- Connections ---
         self._load_config()
         self.login_btn.clicked.connect(self.login_once)
@@ -151,9 +167,25 @@ class AutoLoginWindow(QWidget):
         self.stop_btn.clicked.connect(self.stop_auto_retry)
         self.save_btn.clicked.connect(self.save_credentials)
         self.switch_btn.clicked.connect(self.switch_credentials)
-        self.extract_captcha_btn.clicked.connect(self.toggle_extract_mode)
+        self.save_html_btn.clicked.connect(self.on_save_html)
+        self.start_record_btn.clicked.connect(self.on_start_recording)
+        self.stop_record_btn.clicked.connect(self.on_stop_recording)
         self.webview.loadFinished.connect(self.on_load_finished)
         self.log_area.textChanged.connect(self.debug_log_area_size)
+        
+        # 检查 resources/jmcomic/option.yml 是否存在
+        jmcomic_option_path = os.path.join(os.path.dirname(__file__), '../resources/jmcomic/option.yml')
+        jmcomic_enabled = os.path.exists(jmcomic_option_path)
+
+        # 如果 option.yml 不存在，不显示 JMComic 按钮
+        if not jmcomic_enabled:
+            self.jmcomic_btn.hide()
+        else:
+            self.jmcomic_btn.clicked.connect(self.show_jmcomic_window)
+
+    def show_jmcomic_window(self):
+        dialog = JMComicWidget(self)
+        dialog.exec_()
 
     def on_load_finished(self, ok):
         """页面加载完成回调"""
@@ -495,93 +527,25 @@ class AutoLoginWindow(QWidget):
     def debug_log_area_size(self):
         pass
     
-    def toggle_extract_mode(self):
-        """切换验证码提取模式 / 自动连续提取验证码"""
-        current_url = self.webview.url().toString()
-        is_local_platform = self._local_auth_url in current_url
-        self._extract_mode = not self._extract_mode
-        if self._extract_mode:
-            self._extracted_count = 0
-            self._captcha_save_dir.mkdir(exist_ok=True)
-            self.extract_captcha_btn.setText(f"自动提取验证码 ({self._extracted_count}/{self._extract_target})")
-            self._log(f"✓ 自动验证码提取模式已开启！目标: {self._extract_target} 张")
-            self._log(f"保存目录: {self._captcha_save_dir.absolute()}")
-            self._log("📌 自动流程: 自动点击验证码图片，自动保存，直到达到目标数量")
-            if is_local_platform:
-                self._log("开始自动提取验证码...")
-                self.auto_extract_captcha()
-            else:
-                self._log("请先登录到教学管理服务平台，再开启自动提取模式。")
-        else:
-            self.extract_captcha_btn.setText("提取验证码样本")
-            self._log(f"✓ 自动验证码提取模式已关闭。共提取: {self._extracted_count} 张")
-
-    def auto_extract_captcha(self):
-        """自动点击验证码图片并保存，循环直到目标数量"""
-        if not self._extract_mode or self._extracted_count >= self._extract_target:
-            self._log(f"自动提取已完成或已关闭。共提取: {self._extracted_count} 张")
-            self.extract_captcha_btn.setText("提取验证码样本")
-            self._extract_mode = False
-            return
-        page = self.webview.page()
-        if page:
-            # 1. 获取当前验证码URL
-            page.runJavaScript(get_captcha_url_js(), self.handle_auto_extract_captcha)
-
-    def handle_auto_extract_captcha(self, captcha_url):
-        """自动提取验证码回调"""
-        if not captcha_url:
-            self._log("✗ 未找到验证码图片URL，等待页面加载...")
-            QTimer.singleShot(1000, self.auto_extract_captcha)
-            return
-        self._log(f"✓ 检测到验证码地址: {captcha_url}")
-        self.save_captcha_sample(captcha_url, after_save=self.simulate_click_and_wait)
-
-    def simulate_click_and_wait(self):
-        """模拟点击验证码图片，等待新验证码加载后继续自动提取"""
-        page = self.webview.page()
-        if page:
-            # 2. 模拟点击验证码图片，触发刷新
-            js_click = """
-            var img = document.getElementById('img_lazycaptcha');
-            if(img) { img.click(); }
-            """
-            page.runJavaScript(js_click)
-            self._log("已自动点击验证码图片，等待新验证码加载...")
-            # 3. 等待新验证码加载后继续提取
-            QTimer.singleShot(1500, self.auto_extract_captcha)
-
+    # === 抢课辅助功能 ===
     
-    def save_captcha_sample(self, captcha_url, after_save=None):
-        """保存验证码样本，支持回调"""
-        if self._extracted_count >= self._extract_target:
-            self._log(f"✓ 已达到目标数量 {self._extract_target} 张，停止提取")
-            self._extract_mode = False
-            self.extract_captcha_btn.setText("提取验证码样本")
-            return
-        try:
-            import requests
-            from datetime import datetime
-            response = requests.get(captcha_url, timeout=10)
-            response.raise_for_status()
-            processed_bytes = self.captcha_handler.process_gif_captcha(response.content)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"captcha_{timestamp}.png"
-            filepath = self._captcha_save_dir / filename
-            with open(filepath, 'wb') as f:
-                f.write(processed_bytes)
-            self._extracted_count += 1
-            self._log(f"✓ 已保存 ({self._extracted_count}/{self._extract_target}): {filename}")
-            self.extract_captcha_btn.setText(f"自动提取验证码 ({self._extracted_count}/{self._extract_target})")
-            if self._extracted_count >= self._extract_target:
-                self._log(f"🎉 验证码提取完成！共 {self._extracted_count} 张")
-                self._log(f"保存位置: {self._captcha_save_dir.absolute()}")
-                self._extract_mode = False
-                self.extract_captcha_btn.setText("提取验证码样本")
-            elif after_save:
-                QTimer.singleShot(500, after_save)
-        except Exception as e:
-            self._log(f"✗ 保存验证码失败: {e}")
+    def on_save_html(self):
+        """保存当前页面 HTML"""
+        self.log("开始保存当前页面 HTML...")
+        self.html_recorder.save_current_html()
+    
+    def on_start_recording(self):
+        """开始录制操作"""
+        self.html_recorder.start_recording_actions()
+        self.start_record_btn.setEnabled(False)
+        self.stop_record_btn.setEnabled(True)
+    
+    def on_stop_recording(self):
+        """停止录制操作"""
+        self.html_recorder.stop_recording_and_save()
+        self.start_record_btn.setEnabled(True)
+        self.stop_record_btn.setEnabled(False)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

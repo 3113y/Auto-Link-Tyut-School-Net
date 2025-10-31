@@ -157,8 +157,8 @@ class AutoLoginWindow(QWidget):
         self.captcha_handler = CaptchaHandler()
         
         # HTML 录制器
-        self.html_recorder = HTMLRecorder(self.webview)
-        self.html_recorder.log_message.connect(self._log)
+        # self.html_recorder = HTMLRecorder(self.webview)
+        # self.html_recorder.log_message.connect(self._log)
         
         # --- Connections ---
         self._load_config()

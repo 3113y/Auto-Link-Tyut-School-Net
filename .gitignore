@@ -64,7 +64,10 @@ saved_models/
 
 # Build files
 build/
+build_*
 dist/
 *.spec
 __pycache__/
 *.pyc
+
+libs/
